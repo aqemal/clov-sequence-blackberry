@@ -1,0 +1,2 @@
+source_report,sample_id,label,malware_family
+sample_sandbox_report.json,SYNTHETIC-MAL-001,malicious,synthetic_demo

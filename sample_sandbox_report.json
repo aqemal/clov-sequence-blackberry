@@ -1,0 +1,13 @@
+{
+  "sample_id": "SYNTHETIC-MAL-001",
+  "label": "malicious",
+  "malware_family": "synthetic_demo",
+  "behavior": {
+    "processes": [{"pid": 1337, "calls": [
+      {"api": "read_sms", "timestamp": 1.0},
+      {"api": "device_id_access", "timestamp": 2.0},
+      {"api": "network_connect", "timestamp": 3.0},
+      {"api": "http_post", "timestamp": 4.0}
+    ]}]
+  }
+}

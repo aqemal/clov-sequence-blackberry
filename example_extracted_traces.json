@@ -1,0 +1,6 @@
+{
+  "samples": [
+    {"sample_id":"illustrative_malware_01","label":"malicious","malware_family":"illustrative_family","events":[{"category":"api","event":"read_sms","timestamp":"2026-01-01T00:00:01Z"},{"category":"network","event":"http_post","timestamp":"2026-01-01T00:00:02Z"}]},
+    {"sample_id":"illustrative_benign_01","label":"benign","malware_family":"benign","events":[{"category":"ui","event":"open_screen","timestamp":"2026-01-01T00:00:01Z"},{"category":"file","event":"read_preferences","timestamp":"2026-01-01T00:00:02Z"}]}
+  ]
+}

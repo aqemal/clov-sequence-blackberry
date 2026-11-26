@@ -1,0 +1,8 @@
+Sequence-CloV v12.0
+- Added 'Reproducible experiments (v12)' tab.
+- Accepts an existing release ZIP with train.csv/test.csv/release_manifest.json.
+- Checks class coverage, sample ID and sequence overlap and repeated APK hashes across partitions.
+- Runs Logistic Regression, CNN, BiLSTM and Transformer on identical held-out partitions.
+- Exports metrics, per-sample predictions, configuration, source archive checksum and audit.
+- Includes fully synthetic example release and regression tests.
+No real-world accuracy claims; APK sandbox execution not included.
