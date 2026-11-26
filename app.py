@@ -61,20 +61,28 @@ except Exception as exc:
     st.error(f'Input data error: {exc}')
     st.stop()
 
+# Compact research architecture: distinguish the research workflow from a validated production pipeline.
+st.markdown('### Research workflow · from behavioural evidence to explanation')
+wf=st.columns(5)
+for column, heading, detail in zip(wf,
+    ['1 · Trace input','2 · Quality checks','3 · Sequence encoding','4 · AI classification','5 · Analyst review'],
+    ['Pre-extracted logs','Validate events and labels','Preserve observed order','Transformer or baseline','Prediction + XAI evidence']):
+    with column:
+        with st.container(border=True):
+            st.markdown(f'**{heading}**')
+            st.caption(detail)
+st.caption('Research pipeline only. This web application does not execute APKs; real-world performance remains unvalidated.')
+
 m1,m2,m3,m4=st.columns(4)
 m1.metric('Applications / traces',f'{len(data):,}')
 m2.metric('Benign samples',f'{(data.target==0).sum():,}')
 m3.metric('Malicious samples',f'{(data.target==1).sum():,}')
 m4.metric('Event types',f'{len(set(t for row in data.event_list for t in row)):,}')
 
-# Version 10: main visual analytics panel is always visible, even before model training.
-st.markdown('## ☁️ Sequence-CloV · Behavioural XAI Dashboard')
-st.caption('A presentation-first view of behavioural sequences. Word size reflects event frequency until a trained model supplies event-deletion attribution; these are different measurements.')
-v10_left,v10_right=st.columns([2,1])
-with v10_left:
-    v10_id=st.selectbox('Select Android behavioural trace',data.sample_id.astype(str).tolist(),key='v10_sample')
-with v10_right:
-    v10_mode=st.radio('Word-cloud measurement',['Event frequency','Model deletion impact'],horizontal=False,key='v10_mode')
+# Presentation-first analysis panel: prediction is primary; secondary XAI is expandable.
+st.markdown('## 🛡️ Behavioural analysis · prediction & evidence')
+st.caption('Inspect one ordered behavioural trace. Predictions require a trained model and are research outputs, not operational malware verdicts.')
+v10_id=st.selectbox('Select Android behavioural trace',data.sample_id.astype(str).tolist(),key='v10_sample')
 v10_record=data.loc[data.sample_id.astype(str)==v10_id].iloc[0]
 v10_events=list(v10_record.event_list)
 v10_model_id='transformer' if algo.startswith('Sequence') else 'baseline'
@@ -93,57 +101,92 @@ if v10_trained:
             v10_probability=float(v10_fit['result']['model'].predict_proba(v10_fit['result']['vectorizer'].transform([' | '.join(v10_events)]))[0,1])
     except Exception as exc:
         st.warning(f'Model prediction unavailable: {exc}')
-if v10_mode=='Model deletion impact' and v10_trained and len(v10_events)>1:
-    try:
-        v10_probability,v10_attribution=attribution(v10_fit['result'],v10_events,v10_model_id,max_events=min(48,len(v10_events)))
-    except Exception as exc:
-        v10_att_error=str(exc)
 
-v10_k1,v10_k2,v10_k3,v10_k4=st.columns(4)
-v10_k1.metric('Selected sample',v10_id)
-v10_k2.metric('Dataset label',str(v10_record.label))
-v10_k3.metric('Behavioural events',str(len(v10_events)))
-v10_k4.metric('Malicious probability',f'{v10_probability:.1%}' if v10_probability is not None else 'Not trained')
+v10_pred,v10_context=st.columns([1.3,1])
+with v10_pred:
+    with st.container(border=True):
+        st.markdown('#### Model decision')
+        if v10_probability is None:
+            st.info('**Model not trained for the current settings.** Open **🧠 Train & evaluate** below, train the selected model, then return here.')
+        else:
+            label='Malicious' if v10_probability>=0.5 else 'Benign'
+            st.metric('Predicted class',label)
+            st.metric('Predicted malicious probability',f'{v10_probability:.1%}')
+            st.progress(float(np.clip(v10_probability,0,1)))
+            st.caption('Decision threshold: 0.50 · Model score, not calibrated real-world risk.')
+with v10_context:
+    with st.container(border=True):
+        st.markdown('#### Supporting sample details')
+        st.metric('Selected sample',v10_id)
+        c_l,c_e=st.columns(2)
+        c_l.metric('Dataset label',str(v10_record.label))
+        c_e.metric('Recorded events',str(len(v10_events)))
+        if v10_trained:
+            held_out=set(v10_fit['test'].sample_id.astype(str).tolist())
+            role='Held-out test sample' if str(v10_id) in held_out else 'Training sample'
+            st.caption(f'Sample partition: **{role}**. A training-sample prediction is not independent test evidence.')
+        else:
+            st.caption('Train a model to display the prediction and held-out evaluation metrics.')
+
 if source=='Synthetic demonstration':
-    st.info('SYNTHETIC DATA: This visualisation is illustrative only. Neither events nor predictions are measurements from the Google Drive APK collection.')
-if not v10_trained:
-    st.caption('For a trained model prediction or attribution, use **Train & evaluate** with the currently selected dataset and model, then return here.')
-if v10_mode=='Model deletion impact':
-    if v10_att_error:st.warning(f'Attribution could not be computed: {v10_att_error}')
-    elif not v10_trained:st.warning('Model deletion impact requires a trained model. Showing event frequency instead; no model-based attribution is implied.')
-    elif len(v10_events)<2:st.warning('At least two events are required. Showing event frequency instead.')
+    st.info('**SYNTHETIC DEMONSTRATION** — events, labels, and any resulting scores are illustrative; not observed malware detection performance.')
+if v10_trained:
+    st.markdown('#### Model evaluation · held-out split')
+    metrics=v10_fit['result'].get('metrics',{})
+    cols=st.columns(4)
+    for col,k in zip(cols,['accuracy','precision','recall','f1']):
+        value=metrics.get(k)
+        col.metric(k.upper() if k=='f1' else k.title(),f'{float(value):.3f}' if value is not None else '—')
+    st.caption('These aggregate metrics come from the prototype’s 75/25 random split; they are not leakage-controlled publication results.')
+else:
+    st.caption('**To begin:** Select a model in the sidebar and use **🧠 Train & evaluate** (below) to fit it. This page updates after training.')
 
-v10_use_imp=(v10_mode=='Model deletion impact' and v10_attribution is not None and not v10_attribution.empty)
-v10_rank=impact_ranking(v10_attribution) if v10_use_imp else frequency_ranking(v10_events)
-v10_measure='Mean absolute change in P(malicious) after removing one occurrence' if v10_use_imp else 'Number of occurrences in this trace'
-v10_a,v10_b=st.columns([1.2,1])
-with v10_a:
-    st.markdown('### ☁️ Behavioural word cloud')
-    st.caption(v10_measure + '. Not proof of causal behaviour.')
-    st.markdown(wordcloud_html(v10_rank),unsafe_allow_html=True)
-    st.download_button('Download word-cloud values (CSV)',pd.DataFrame(v10_rank,columns=['event','score']).to_csv(index=False).encode('utf-8'),file_name='sequence_clov_v10_wordcloud_values.csv',mime='text/csv',key='v10_wc_export')
-with v10_b:
-    st.markdown('### 📊 Behaviour importance')
+st.markdown('### Behavioural evidence')
+v10_tab_1,v10_tab_2=st.tabs(['Event order & observed patterns','Additional XAI visualizations'])
+with v10_tab_1:
+    st.caption('Event order reflects the sequence supplied to the dashboard; these positions are not wall-clock timestamps.')
+    v10_timeline=ordered_timeline(v10_events)
+    if not v10_timeline.empty:
+        if len(v10_timeline)>128:
+            st.caption('Displaying the first 128 events for readability; download the CSV for the full sequence.')
+        v10_display=v10_timeline.head(128)
+        v10_timeline_plot=px.scatter(v10_display,x='step',y='event',hover_data=['step','event'],labels={'step':'Sequence position','event':'Behaviour'})
+        v10_timeline_plot.update_traces(marker_size=10)
+        v10_timeline_plot.update_layout(height=max(250,min(440,18*v10_display.event.nunique()+140)))
+        st.plotly_chart(v10_timeline_plot,use_container_width=True)
+        st.download_button('Download ordered events (CSV)',v10_timeline.to_csv(index=False).encode('utf-8'),file_name='sequence_clov_ordered_events.csv',mime='text/csv',key='v10_timeline_export')
+with v10_tab_2:
+    st.caption('Exploratory visualization tools. Event frequencies do not explain model predictions; deletion impact is a model-sensitivity diagnostic.')
+    v10_mode=st.radio('Attribution measurement',['Event frequency','Model deletion impact'],horizontal=True,key='v10_mode')
+    if v10_mode=='Model deletion impact' and v10_trained and len(v10_events)>1:
+        try:
+            v10_probability,v10_attribution=attribution(v10_fit['result'],v10_events,v10_model_id,max_events=min(48,len(v10_events)))
+        except Exception as exc:
+            v10_att_error=str(exc)
+    if v10_mode=='Model deletion impact':
+        if v10_att_error:st.warning(f'Attribution could not be computed: {v10_att_error}')
+        elif not v10_trained:st.warning('Train the selected model to enable deletion-impact estimates. Showing frequency instead.')
+        elif len(v10_events)<2:st.warning('At least two events are needed. Showing frequency instead.')
+    v10_use_imp=(v10_mode=='Model deletion impact' and v10_attribution is not None and not v10_attribution.empty)
+    v10_rank=impact_ranking(v10_attribution) if v10_use_imp else frequency_ranking(v10_events)
+    v10_measure='Mean absolute change in P(malicious) after deleting one event' if v10_use_imp else 'Occurrences of each event in this trace'
     if v10_rank:
-        v10_chart=pd.DataFrame(v10_rank[:14],columns=['event','score']).sort_values('score')
-        st.plotly_chart(px.bar(v10_chart,x='score',y='event',orientation='h',labels={'score':v10_measure,'event':'Behaviour'}),use_container_width=True)
-    else:st.info('No events to chart.')
-st.markdown('### 🕒 Behavioural event order')
-v10_timeline=ordered_timeline(v10_events)
-if not v10_timeline.empty:
-    v10_timeline_plot=px.scatter(v10_timeline,x='step',y='event',hover_data=['step','event'],labels={'step':'Sequence position','event':'Behaviour'})
-    v10_timeline_plot.update_traces(marker_size=11)
-    v10_timeline_plot.update_layout(height=max(290,min(650,26*v10_timeline.event.nunique()+150)))
-    st.plotly_chart(v10_timeline_plot,use_container_width=True)
-    st.download_button('Download ordered events (CSV)',v10_timeline.to_csv(index=False).encode('utf-8'),file_name='sequence_clov_v10_ordered_events.csv',mime='text/csv',key='v10_timeline_export')
-if v10_attention is not None:
-    with st.expander('Transformer self-attention heatmap (descriptive, not causal)',expanded=False):
-        v10_labels=[f'{i+1}:{e}' for i,e in enumerate(v10_events[:len(v10_attention)])]
-        st.plotly_chart(px.imshow(v10_attention,x=v10_labels,y=v10_labels,color_continuous_scale='Purples',labels={'color':'Attention','x':'Key event','y':'Query event'}),use_container_width=True)
-if v10_attribution is not None and not v10_attribution.empty:
-    with st.expander('Event deletion diagnostic details',expanded=False):
-        st.dataframe(v10_attribution,use_container_width=True,hide_index=True)
-        st.download_button('Download event-level attribution (CSV)',v10_attribution.to_csv(index=False).encode(),file_name='sequence_clov_v10_attribution.csv',mime='text/csv',key='v10_att_export')
+        v10_chart=pd.DataFrame(v10_rank[:12],columns=['event','score']).sort_values('score')
+        st.plotly_chart(px.bar(v10_chart,x='score',y='event',orientation='h',labels={'score':v10_measure,'event':'Behaviour'},title='Behaviour ranking'),use_container_width=True)
+        with st.expander('☁️ Behavioural word cloud (secondary view)',expanded=False):
+            st.caption(v10_measure + ' · Not proof of causal malware behaviour.')
+            st.markdown(wordcloud_html(v10_rank),unsafe_allow_html=True)
+            st.download_button('Download word-cloud values (CSV)',pd.DataFrame(v10_rank,columns=['event','score']).to_csv(index=False).encode('utf-8'),file_name='sequence_clov_wordcloud_values.csv',mime='text/csv',key='v10_wc_export')
+    else:
+        st.info('No behavioural events available for visualization.')
+    if v10_attention is not None:
+        with st.expander('Transformer attention heatmap (descriptive, not causal)',expanded=False):
+            v10_labels=[f'{i+1}:{e}' for i,e in enumerate(v10_events[:len(v10_attention)])]
+            st.plotly_chart(px.imshow(v10_attention,x=v10_labels,y=v10_labels,color_continuous_scale='Purples',labels={'color':'Attention','x':'Key event','y':'Query event'}),use_container_width=True)
+    if v10_attribution is not None and not v10_attribution.empty:
+        with st.expander('Event deletion diagnostic details',expanded=False):
+            st.dataframe(v10_attribution,use_container_width=True,hide_index=True)
+            st.download_button('Download event-level attribution (CSV)',v10_attribution.to_csv(index=False).encode(),file_name='sequence_clov_attribution.csv',mime='text/csv',key='v10_att_export')
 st.divider()
 
 tabs=st.tabs(['📊 Dataset explorer','🧠 Train & evaluate','🔎 Explain a sample','🧭 Research workflow','📁 APK inventory & trace ingestion','🧪 Sandbox report adapter','🔬 Research validation','✅ Leakage-aware training','📈 CNN / BiLSTM benchmark','🔬 XAI faithfulness lab','📦 Real-trace release builder','🧾 Sandbox experiment registry','🧰 Dataset quality gate (v11)','🧬 Reproducible experiments (v12)'])
